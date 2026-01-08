@@ -1,2 +1,2 @@
 # ClearInfo_App_backend
-消除信息过载
+It's mobile app backend code repo of InfoPlan
