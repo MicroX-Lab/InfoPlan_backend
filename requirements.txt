@@ -1,0 +1,7 @@
+PyExecJS
+requests
+loguru
+python-dotenv
+retry
+openpyxl
+flask
