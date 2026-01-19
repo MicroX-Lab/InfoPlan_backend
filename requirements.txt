@@ -6,3 +6,8 @@ retry
 openpyxl
 flask
 flask_cors
+pymysql
+sqlalchemy
+pyjwt
+passlib[bcrypt]
+flask-mail

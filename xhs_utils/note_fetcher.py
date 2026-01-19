@@ -1,6 +1,6 @@
 # xhs_utils/note_fetcher.py
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 from loguru import logger
 from apis.xhs_pc_apis import XHS_Apis
 from xhs_utils.data_util import handle_note_info

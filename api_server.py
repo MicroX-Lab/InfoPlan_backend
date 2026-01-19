@@ -7,12 +7,20 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from loguru import logger
 from apis.xhs_pc_apis import XHS_Apis
+from apis.auth_apis import (
+    register_api, verify_email_api, login_api,
+    request_reset_password_api, reset_password_api
+)
 from xhs_utils.common_util import load_env
 from xhs_utils.note_fetcher import NoteFetcher
+from auth.email import init_mail
 from typing import Optional
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
+
+# 初始化邮件服务
+init_mail(app)
 
 xhs_apis = XHS_Apis()
 
@@ -297,6 +305,37 @@ def get_user_notes_single(user_id: str):
         }), 500
 
 
+# 认证相关路由
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    """用户注册接口"""
+    return register_api()
+
+
+@app.route('/api/auth/verify-email', methods=['POST'])
+def verify_email():
+    """邮箱验证接口"""
+    return verify_email_api()
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """用户登录接口"""
+    return login_api()
+
+
+@app.route('/api/auth/request-reset', methods=['POST'])
+def request_reset():
+    """请求重置密码接口"""
+    return request_reset_password_api()
+
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+def reset_password():
+    """重置密码接口"""
+    return reset_password_api()
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """健康检查接口"""
@@ -311,9 +350,17 @@ if __name__ == '__main__':
     logger.info('=' * 60)
     logger.info('启动小红书爬虫API服务（服务器A）')
     logger.info('=' * 60)
-    logger.info('搜索用户接口: POST /api/search/user')
-    logger.info('批量搜索用户接口: POST /api/search/user/batch')
-    logger.info('获取用户笔记接口: POST /api/users/notes')
+    logger.info('认证相关接口:')
+    logger.info('用户注册: POST /api/auth/register')
+    logger.info('邮箱验证: POST /api/auth/verify-email')
+    logger.info('用户登录: POST /api/auth/login')
+    logger.info('请求重置密码: POST /api/auth/request-reset')
+    logger.info('重置密码: POST /api/auth/reset-password')
+    logger.info('')
+    logger.info('爬虫相关接口:')
+    logger.info('搜索用户: POST /api/search/user')
+    logger.info('批量搜索用户: POST /api/search/user/batch')
+    logger.info('获取用户笔记: POST /api/users/notes')
     logger.info('获取单个用户笔记: GET /api/user/notes/<user_id>')
     logger.info('健康检查接口: GET /health')
     logger.info('=' * 60)
