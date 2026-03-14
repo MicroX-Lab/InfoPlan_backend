@@ -2,8 +2,10 @@
 """Flask App Factory"""
 import os
 
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
+from loguru import logger
+from werkzeug.exceptions import HTTPException
 
 from app.config import config_map
 from app.extensions import db, jwt
@@ -22,16 +24,51 @@ def create_app(config_name=None):
     jwt.init_app(app)
     CORS(app)
 
-    # 启用 SQLite WAL 模式
-    @app.after_request
-    def after_request(response):
-        return response
+    # 全局错误处理
+    _register_error_handlers(app)
 
     with app.app_context():
         _register_blueprints(app)
         _enable_wal_mode(app)
 
     return app
+
+
+def _register_error_handlers(app):
+    """全局错误处理"""
+
+    @app.errorhandler(HTTPException)
+    def handle_http_error(e):
+        return jsonify({"success": False, "msg": e.description}), e.code
+
+    @app.errorhandler(400)
+    def bad_request(e):
+        return jsonify({"success": False, "msg": "请求参数错误"}), 400
+
+    @app.errorhandler(404)
+    def not_found(e):
+        return jsonify({"success": False, "msg": "资源不存在"}), 404
+
+    @app.errorhandler(405)
+    def method_not_allowed(e):
+        return jsonify({"success": False, "msg": "请求方法不允许"}), 405
+
+    @app.errorhandler(500)
+    def internal_error(e):
+        logger.error(f"内部服务器错误: {e}", exc_info=True)
+        return jsonify({"success": False, "msg": "服务器内部错误"}), 500
+
+    @jwt.expired_token_loader
+    def expired_token_callback(jwt_header, jwt_payload):
+        return jsonify({"success": False, "msg": "登录已过期，请重新登录"}), 401
+
+    @jwt.invalid_token_loader
+    def invalid_token_callback(error):
+        return jsonify({"success": False, "msg": "无效的认证令牌"}), 401
+
+    @jwt.unauthorized_loader
+    def missing_token_callback(error):
+        return jsonify({"success": False, "msg": "请先登录"}), 401
 
 
 def _register_blueprints(app):

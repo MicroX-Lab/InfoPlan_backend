@@ -11,6 +11,7 @@ def register_blueprints(app):
     from app.api.digest import digest_bp
     from app.api.goals import goals_bp
     from app.api.bookmarks import bookmarks_bp
+    from app.api.ocr import ocr_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(health_bp)
@@ -20,3 +21,4 @@ def register_blueprints(app):
     app.register_blueprint(digest_bp, url_prefix="/api/digest")
     app.register_blueprint(goals_bp, url_prefix="/api/goals")
     app.register_blueprint(bookmarks_bp, url_prefix="/api/bookmarks")
+    app.register_blueprint(ocr_bp, url_prefix="/api/ocr")
