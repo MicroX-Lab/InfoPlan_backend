@@ -1,3 +1,4 @@
+# 原有依赖
 PyExecJS
 requests
 loguru
@@ -6,3 +7,16 @@ retry
 openpyxl
 flask
 flask_cors
+
+# Phase 1 新增
+flask-jwt-extended
+flask-sqlalchemy
+sqlalchemy>=2.0
+alembic
+# 密码哈希使用 werkzeug 内置 (无需额外依赖)
+cachetools
+openai
+pydantic
+gunicorn
+pytest
+pytest-flask
