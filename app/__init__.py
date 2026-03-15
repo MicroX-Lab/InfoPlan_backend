@@ -30,6 +30,7 @@ def create_app(config_name=None):
     with app.app_context():
         _register_blueprints(app)
         _enable_wal_mode(app)
+        db.create_all()
 
     return app
 
