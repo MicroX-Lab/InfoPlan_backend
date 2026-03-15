@@ -2,12 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装系统依赖（Node.js 用于 XHS 签名脚本）
+# 安装 Node.js（预编译二进制，不需要编译，秒装）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    gnupg \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
+    curl xz-utils \
+    && curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz \
+       | tar -xJ -C /usr/local --strip-components=1 \
+    && apt-get purge -y xz-utils \
+    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖
