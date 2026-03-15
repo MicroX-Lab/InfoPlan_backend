@@ -33,8 +33,14 @@ class XHSService:
         success, msg, res_json = self.api.search_user(query, self.cookies, page)
         if success and res_json:
             data = res_json.get("data", {})
-            self._user_cache[cache_key] = data
-            return True, msg, data
+            result_code = data.get("result", {}).get("code")
+            if result_code == 1000:
+                # 业务成功，缓存并返回
+                self._user_cache[cache_key] = data
+                return True, "搜索成功", data
+            # 非 1000（如 3002 无更多结果）：不缓存，返回空数据
+            logger.warning(f"XHS search_user 业务码: code={result_code}, msg={msg}")
+            return True, "没有更多结果", {"users": [], "has_more": False}
         return False, msg, None
 
     def get_users_latest_notes(

@@ -642,11 +642,11 @@ class XHS_Apis():
             data = {
                 "search_user_request": {
                     "keyword": query,
-                    "search_id": "2dn9they1jbjxwawlo4xd",
+                    "search_id": generate_x_b3_traceid(21),
                     "page": page,
                     "page_size": 15,
                     "biz_type": "web_search_user",
-                    "request_id": "22471139-1723999898524"
+                    "request_id": generate_x_b3_traceid(21)
                 }
             }
             headers, cookies, data = generate_request_params(cookies_str, api, data, 'POST')
