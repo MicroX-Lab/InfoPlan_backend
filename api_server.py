@@ -8,6 +8,8 @@ from loguru import logger
 from apis.xhs_pc_apis import XHS_Apis
 from xhs_utils.common_util import load_env
 from xhs_utils.note_fetcher import NoteFetcher
+from xhs_utils.share_link_parser import ShareLinkParser
+from xhs_utils.data_util import handle_note_info
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
@@ -481,6 +483,252 @@ def get_user_url_with_token(user_id: str):
         }), 500
 
 
+@app.route('/api/note/share', methods=['POST'])
+def get_note_by_share_link():
+    """
+    通过分享链接获取笔记详情
+    请求参数（JSON）:
+    {
+        "share_link": "分享链接或分享文本",
+        "get_comments": false  # 可选，是否获取评论，默认false
+    }
+
+    返回格式:
+    {
+        "success": true,
+        "msg": "获取笔记成功",
+        "data": {
+            "note_id": "...",
+            "title": "...",
+            "desc": "...",
+            "type": "normal",
+            "user": {
+                "user_id": "...",
+                "nickname": "..."
+            },
+            "interact_info": {
+                "liked_count": 100,
+                "collected_count": 50,
+                "comment_count": 10
+            },
+            "tags": ["tag1", "tag2"],
+            "images": [...],
+            "video": {...}
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "success": False,
+                "msg": "请求体不能为空",
+                "data": None
+            }), 400
+
+        share_link = data.get('share_link', '')
+        if not share_link:
+            return jsonify({
+                "success": False,
+                "msg": "share_link 参数不能为空",
+                "data": None
+            }), 400
+
+        get_comments = data.get('get_comments', False)
+
+        logger.info(f'收到通过分享链接获取笔记请求: {share_link[:100]}...')
+
+        # 1. 解析分享链接
+        parser = ShareLinkParser()
+        parsed_info = parser.parse_share_link(share_link)
+
+        if not parsed_info or not parsed_info.get('note_id'):
+            return jsonify({
+                "success": False,
+                "msg": "无法解析分享链接，请检查链接格式",
+                "data": None,
+                "hint": "支持的格式: https://www.xiaohongshu.com/discovery/item/{note_id} 或 https://www.xiaohongshu.com/explore/{note_id}"
+            }), 400
+
+        note_id = parsed_info['note_id']
+        explore_url = parsed_info['explore_url']
+
+        logger.info(f'解析成功: note_id={note_id}')
+
+        # 2. 获取笔记详情
+        success, msg, note_info = xhs_apis.get_note_info(explore_url, cookies_str)
+
+        if not success:
+            return jsonify({
+                "success": False,
+                "msg": f"获取笔记失败: {msg}",
+                "data": None,
+                "hint": "可能原因：1) 笔记不存在或已删除 2) xsec_token过期 3) Cookie失效"
+            }), 500
+
+        # 检查API业务层返回是否成功
+        if note_info and not note_info.get('success', True):
+            api_msg = note_info.get('msg', '未知错误')
+            api_code = note_info.get('code', 0)
+            logger.warning(f'小红书API返回业务错误: code={api_code}, msg={api_msg}')
+            return jsonify({
+                "success": False,
+                "msg": f"小红书API返回错误: {api_msg}",
+                "data": None,
+                "hint": "可能原因：1) Cookie已过期，请更新cookies 2) 笔记不存在或已删除 3) xsec_token过期"
+            }), 500
+
+        # 3. 处理笔记数据
+        try:
+            items = note_info.get('data', {}).get('items', [])
+            if not items or len(items) == 0:
+                return jsonify({
+                    "success": False,
+                    "msg": "笔记数据为空",
+                    "data": None
+                }), 404
+
+            note_data = items[0]
+            note_data['url'] = explore_url
+
+            # 使用data_util处理笔记信息
+            handled_note = handle_note_info(note_data)
+
+            # 添加解析的额外信息
+            handled_note['parsed_info'] = {
+                'note_id': note_id,
+                'xsec_token': parsed_info.get('xsec_token', ''),
+                'xsec_source': parsed_info.get('xsec_source', ''),
+                'original_share_link': share_link[:200] if len(share_link) > 200 else share_link
+            }
+
+            # 4. 如果需要获取评论
+            if get_comments:
+                try:
+                    xsec_token = parsed_info.get('xsec_token', '')
+                    if xsec_token:
+                        logger.info(f'正在获取笔记评论...')
+                        success_comment, msg_comment, comments = xhs_apis.get_note_all_out_comment(
+                            note_id, xsec_token, cookies_str
+                        )
+                        if success_comment:
+                            handled_note['comments'] = comments
+                            handled_note['comments_count'] = len(comments)
+                            logger.info(f'成功获取 {len(comments)} 条评论')
+                        else:
+                            logger.warning(f'获取评论失败: {msg_comment}')
+                            handled_note['comments'] = []
+                            handled_note['comments_error'] = msg_comment
+                    else:
+                        handled_note['comments'] = []
+                        handled_note['comments_error'] = "缺少xsec_token，无法获取评论"
+                except Exception as e:
+                    logger.error(f'获取评论时出错: {e}')
+                    handled_note['comments'] = []
+                    handled_note['comments_error'] = str(e)
+
+            return jsonify({
+                "success": True,
+                "msg": "获取笔记成功",
+                "data": handled_note
+            }), 200
+
+        except Exception as e:
+            logger.error(f'处理笔记数据时出错: {e}', exc_info=True)
+            return jsonify({
+                "success": False,
+                "msg": f"处理笔记数据失败: {str(e)}",
+                "data": None
+            }), 500
+
+    except Exception as e:
+        logger.error(f'通过分享链接获取笔记接口错误: {str(e)}', exc_info=True)
+        return jsonify({
+            "success": False,
+            "msg": f"服务器错误: {str(e)}",
+            "data": None
+        }), 500
+
+
+@app.route('/api/note/parse', methods=['POST'])
+def parse_share_link_only():
+    """
+    仅解析分享链接，不获取笔记详情
+    请求参数（JSON）:
+    {
+        "share_link": "分享链接或分享文本"
+    }
+
+    返回格式:
+    {
+        "success": true,
+        "msg": "解析成功",
+        "data": {
+            "note_id": "...",
+            "xsec_token": "...",
+            "xsec_source": "...",
+            "explore_url": "...",
+            "title": "...",  # 从分享文本提取
+            "author": "..."  # 从分享文本提取
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "success": False,
+                "msg": "请求体不能为空",
+                "data": None
+            }), 400
+
+        share_link = data.get('share_link', '')
+        if not share_link:
+            return jsonify({
+                "success": False,
+                "msg": "share_link 参数不能为空",
+                "data": None
+            }), 400
+
+        logger.info(f'收到解析分享链接请求: {share_link[:100]}...')
+
+        # 解析分享链接
+        parser = ShareLinkParser()
+        parsed_info = parser.parse_share_link(share_link)
+
+        if not parsed_info or not parsed_info.get('note_id'):
+            return jsonify({
+                "success": False,
+                "msg": "无法解析分享链接，请检查链接格式",
+                "data": None
+            }), 400
+
+        # 尝试从分享文本中提取标题和作者
+        title = parser.extract_title_from_share_text(share_link)
+        author = parser.extract_author_from_share_text(share_link)
+
+        if title:
+            parsed_info['title'] = title
+        if author:
+            parsed_info['author'] = author
+
+        return jsonify({
+            "success": True,
+            "msg": "解析成功",
+            "data": parsed_info
+        }), 200
+
+    except Exception as e:
+        logger.error(f'解析分享链接接口错误: {str(e)}', exc_info=True)
+        return jsonify({
+            "success": False,
+            "msg": f"服务器错误: {str(e)}",
+            "data": None
+        }), 500
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """健康检查接口"""
@@ -499,6 +747,9 @@ if __name__ == '__main__':
     logger.info('批量搜索用户接口: POST /api/search/user/batch')
     logger.info('获取用户笔记接口: POST /api/users/notes')
     logger.info('获取单个用户笔记: GET /api/user/notes/<user_id>')
+    logger.info('获取用户URL: GET /api/user/url/<user_id>')
+    logger.info('通过分享链接获取笔记: POST /api/note/share')
+    logger.info('解析分享链接: POST /api/note/parse')
     logger.info('健康检查接口: GET /health')
     logger.info('=' * 60)
     app.run(host='0.0.0.0', port=5001, debug=True)

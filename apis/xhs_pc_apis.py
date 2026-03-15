@@ -204,10 +204,10 @@ class XHS_Apis():
         try:
             urlParse = urllib.parse.urlparse(user_url)
             user_id = urlParse.path.split("/")[-1]
-            kvs = urlParse.query.split('&')
-            kvDist = {kv.split('=')[0]: kv.split('=')[1] for kv in kvs}
-            xsec_token = kvDist['xsec_token'] if 'xsec_token' in kvDist else ""
-            xsec_source = kvDist['xsec_source'] if 'xsec_source' in kvDist else "pc_search"
+            # 使用 parse_qs 安全解析查询参数，避免 xsec_token 中的 '=' 被截断
+            kvDist = {k: v[0] for k, v in urllib.parse.parse_qs(urlParse.query).items()}
+            xsec_token = kvDist.get('xsec_token', '')
+            xsec_source = kvDist.get('xsec_source', 'pc_search')
             while True:
                 success, msg, res_json = self.get_user_note_info(user_id, cursor, cookies_str, xsec_token, xsec_source, proxies)
                 if not success:
@@ -339,10 +339,10 @@ class XHS_Apis():
         try:
             urlParse = urllib.parse.urlparse(user_url)
             user_id = urlParse.path.split("/")[-1]
-            kvs = urlParse.query.split('&')
-            kvDist = {kv.split('=')[0]: kv.split('=')[1] for kv in kvs}
-            xsec_token = kvDist['xsec_token'] if 'xsec_token' in kvDist else ""
-            xsec_source = kvDist['xsec_source'] if 'xsec_source' in kvDist else "pc_user"
+            # 使用 parse_qs 安全解析查询参数，避免 xsec_token 中的 '=' 被截断
+            kvDist = {k: v[0] for k, v in urllib.parse.parse_qs(urlParse.query).items()}
+            xsec_token = kvDist.get('xsec_token', '')
+            xsec_source = kvDist.get('xsec_source', 'pc_user')
             while True:
                 success, msg, res_json = self.get_user_like_note_info(user_id, cursor, cookies_str, xsec_token,
                                                                       xsec_source, proxies)
@@ -402,10 +402,10 @@ class XHS_Apis():
         try:
             urlParse = urllib.parse.urlparse(user_url)
             user_id = urlParse.path.split("/")[-1]
-            kvs = urlParse.query.split('&')
-            kvDist = {kv.split('=')[0]: kv.split('=')[1] for kv in kvs}
-            xsec_token = kvDist['xsec_token'] if 'xsec_token' in kvDist else ""
-            xsec_source = kvDist['xsec_source'] if 'xsec_source' in kvDist else "pc_search"
+            # 使用 parse_qs 安全解析查询参数，避免 xsec_token 中的 '=' 被截断
+            kvDist = {k: v[0] for k, v in urllib.parse.parse_qs(urlParse.query).items()}
+            xsec_token = kvDist.get('xsec_token', '')
+            xsec_source = kvDist.get('xsec_source', 'pc_search')
             while True:
                 success, msg, res_json = self.get_user_collect_note_info(user_id, cursor, cookies_str, xsec_token,
                                                                          xsec_source, proxies)
@@ -438,8 +438,8 @@ class XHS_Apis():
         try:
             urlParse = urllib.parse.urlparse(url)
             note_id = urlParse.path.split("/")[-1]
-            kvs = urlParse.query.split('&')
-            kvDist = {kv.split('=')[0]: kv.split('=')[1] for kv in kvs}
+            # 使用 parse_qs 安全解析查询参数，避免 xsec_token 中的 '=' 被截断
+            kvDist = {k: v[0] for k, v in urllib.parse.parse_qs(urlParse.query).items()}
             api = f"/api/sns/web/v1/feed"
             data = {
                 "source_note_id": note_id,
@@ -451,8 +451,8 @@ class XHS_Apis():
                 "extra": {
                     "need_body_topic": "1"
                 },
-                "xsec_source": kvDist['xsec_source'] if 'xsec_source' in kvDist else "pc_search",
-                "xsec_token": kvDist['xsec_token']
+                "xsec_source": kvDist.get('xsec_source', 'pc_search'),
+                "xsec_token": kvDist.get('xsec_token', '')
             }
             headers, cookies, data = generate_request_params(cookies_str, api, data, 'POST')
             response = requests.post(self.base_url + api, headers=headers, data=data, cookies=cookies, proxies=proxies)
@@ -813,13 +813,14 @@ class XHS_Apis():
         try:
             urlParse = urllib.parse.urlparse(url)
             note_id = urlParse.path.split("/")[-1]
-            kvs = urlParse.query.split('&')
-            kvDist = {kv.split('=')[0]: kv.split('=')[1] for kv in kvs}
-            success, msg, out_comment_list = self.get_note_all_out_comment(note_id, kvDist['xsec_token'], cookies_str, proxies)
+            # 使用 parse_qs 安全解析查询参数，避免 xsec_token 中的 '=' 被截断
+            kvDist = {k: v[0] for k, v in urllib.parse.parse_qs(urlParse.query).items()}
+            xsec_token = kvDist.get('xsec_token', '')
+            success, msg, out_comment_list = self.get_note_all_out_comment(note_id, xsec_token, cookies_str, proxies)
             if not success:
                 raise Exception(msg)
             for comment in out_comment_list:
-                success, msg, new_comment = self.get_note_all_inner_comment(comment, kvDist['xsec_token'], cookies_str, proxies)
+                success, msg, new_comment = self.get_note_all_inner_comment(comment, xsec_token, cookies_str, proxies)
                 if not success:
                     raise Exception(msg)
         except Exception as e:
