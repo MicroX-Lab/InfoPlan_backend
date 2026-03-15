@@ -17,7 +17,50 @@ MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 @ocr_bp.route("/follow-list", methods=["POST"])
 @jwt_required()
 def ocr_follow_list():
-    """上传关注列表截图，VL 模型识别博主昵称"""
+    """上传关注列表截图，VL 模型识别博主昵称
+    ---
+    tags:
+      - OCR
+    security:
+      - Bearer: []
+    consumes:
+      - multipart/form-data
+      - application/json
+    parameters:
+      - in: formData
+        name: image
+        type: file
+        description: 关注列表截图（PNG/JPEG/WebP，最大10MB）
+      - in: body
+        name: body
+        schema:
+          type: object
+          properties:
+            image_base64:
+              type: string
+              description: 图片的base64编码（与文件上传二选一）
+    responses:
+      200:
+        description: 识别结果
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            msg:
+              type: string
+            data:
+              type: object
+              properties:
+                nicknames:
+                  type: array
+                  items:
+                    type: string
+                count:
+                  type: integer
+      400:
+        description: 参数缺失或格式错误
+    """
     # 支持两种上传方式：文件上传 或 base64 JSON
     image_base64 = None
 

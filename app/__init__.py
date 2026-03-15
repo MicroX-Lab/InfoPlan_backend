@@ -4,6 +4,7 @@ import os
 
 from flask import Flask, jsonify
 from flask_cors import CORS
+from flasgger import Swagger
 from loguru import logger
 from werkzeug.exceptions import HTTPException
 
@@ -23,6 +24,23 @@ def create_app(config_name=None):
     db.init_app(app)
     jwt.init_app(app)
     CORS(app)
+
+    # Swagger / OpenAPI 文档
+    Swagger(app, template={
+        "info": {
+            "title": "InfoPlan Backend API",
+            "description": "InfoPlan 后端接口文档 —— 小红书信息流学习助手",
+            "version": "1.0.0",
+        },
+        "securityDefinitions": {
+            "Bearer": {
+                "type": "apiKey",
+                "name": "Authorization",
+                "in": "header",
+                "description": "JWT 认证，格式: Bearer <token>",
+            }
+        },
+    })
 
     # 全局错误处理
     _register_error_handlers(app)

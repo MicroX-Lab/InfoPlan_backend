@@ -60,3 +60,6 @@ parts/
 develop-eggs/
 lib/
 lib64/
+
+
+CLAUDE.md
