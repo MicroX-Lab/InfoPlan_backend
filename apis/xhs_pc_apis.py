@@ -4,6 +4,7 @@ import re
 import urllib
 import requests
 from xhs_utils.xhs_util import splice_str, generate_request_params, generate_x_b3_traceid, get_common_headers
+from xhs_utils.cookie_util import trans_cookies
 from loguru import logger
 
 """
@@ -426,15 +427,15 @@ class XHS_Apis():
 
     def get_note_info(self, url: str, cookies_str: str, proxies: dict = None):
         """
-            获取笔记的详细
+            获取笔记的详细，优先使用API，失败时自动降级为网页解析
             :param url: 你想要获取的笔记的url
             :param cookies_str: 你的cookies
             :param xsec_source: 你的xsec_source 默认为pc_search pc_user pc_feed
             返回笔记的详细
         """
         res_json = None
-        success = True 
-        msg = "" 
+        success = True
+        msg = ""
         try:
             urlParse = urllib.parse.urlparse(url)
             note_id = urlParse.path.split("/")[-1]
@@ -457,10 +458,129 @@ class XHS_Apis():
             headers, cookies, data = generate_request_params(cookies_str, api, data, 'POST')
             response = requests.post(self.base_url + api, headers=headers, data=data, cookies=cookies, proxies=proxies)
             res_json = response.json()
+            # 检查 HTTP 状态码，461 表示触发了反爬验证
+            if response.status_code == 461:
+                logger.warning(f"XHS API 返回 461，降级为网页解析: note_id={note_id}")
+                return self._get_note_info_by_web(url, cookies_str, proxies)
+            elif response.status_code != 200:
+                logger.warning(f"XHS API 返回 {response.status_code}，降级为网页解析: note_id={note_id}")
+                return self._get_note_info_by_web(url, cookies_str, proxies)
         except Exception as e:
             success = False
             msg = str(e)
         return success, msg, res_json
+
+    def _get_note_info_by_web(self, url: str, cookies_str: str, proxies: dict = None):
+        """
+            通过网页解析获取笔记详情（降级方案）
+            从笔记页面 HTML 中的 __INITIAL_STATE__ 提取数据，
+            并转换为与 API 返回一致的格式
+        """
+        try:
+            urlParse = urllib.parse.urlparse(url)
+            note_id = urlParse.path.split("/")[-1]
+
+            headers = get_common_headers()
+            cookies_dict = trans_cookies(cookies_str)
+            response = requests.get(url, headers=headers, cookies=cookies_dict, proxies=proxies, timeout=15)
+
+            if response.status_code != 200:
+                return False, f"网页请求失败: HTTP {response.status_code}", None
+
+            # 从 HTML 中提取 __INITIAL_STATE__
+            match = re.search(r'window\.__INITIAL_STATE__\s*=\s*({.*?})\s*</script>', response.text, re.DOTALL)
+            if not match:
+                return False, "无法从网页中提取笔记数据", None
+
+            raw = match.group(1).replace('undefined', 'null')
+            state = json.loads(raw)
+
+            note_detail_map = state.get('note', {}).get('noteDetailMap', {})
+            note_state = note_detail_map.get(note_id, {})
+            note = note_state.get('note', {})
+
+            if not note:
+                return False, "网页中未找到笔记数据，笔记可能已被删除", None
+
+            # 转换为与 API 返回一致的 items 格式
+            item = self._convert_web_note_to_api_format(note, url)
+            res_json = {
+                "code": 0,
+                "success": True,
+                "data": {"items": [item]},
+                "msg": ""
+            }
+            logger.info(f"网页解析获取笔记成功: note_id={note_id}, title={note.get('title', '')}")
+            return True, "获取成功(网页解析)", res_json
+
+        except json.JSONDecodeError as e:
+            logger.error(f"解析网页 JSON 失败: {e}")
+            return False, f"网页数据解析失败: {e}", None
+        except Exception as e:
+            logger.error(f"网页解析获取笔记失败: {e}", exc_info=True)
+            return False, f"网页解析失败: {str(e)}", None
+
+    @staticmethod
+    def _convert_web_note_to_api_format(note: dict, url: str) -> dict:
+        """将网页 __INITIAL_STATE__ 中的笔记数据转换为 API items 格式"""
+        user = note.get('user', {})
+        interact = note.get('interactInfo', {})
+
+        # 处理图片列表：将 web 格式的 infoList 转换为 API 格式
+        image_list = []
+        for img in note.get('imageList', []):
+            info_list = []
+            for info in img.get('infoList', []):
+                info_list.append({
+                    'image_scene': info.get('imageScene', ''),
+                    'url': info.get('url', '')
+                })
+            image_list.append({
+                'info_list': info_list,
+                'url_default': img.get('urlDefault', ''),
+                'height': img.get('height', 0),
+                'width': img.get('width', 0),
+            })
+
+        # 处理视频数据
+        video = {}
+        if note.get('type') == 'video' and note.get('video'):
+            video_data = note['video']
+            video = {
+                'media': video_data.get('media', {}),
+                'image': video_data.get('image', {}),
+                'capa': video_data.get('capa', {}),
+                'consumer': video_data.get('consumer', {}),
+            }
+
+        note_card = {
+            'type': note.get('type', 'normal'),
+            'user': {
+                'user_id': user.get('userId', ''),
+                'nickname': user.get('nickname', ''),
+                'avatar': user.get('avatar', ''),
+            },
+            'title': note.get('title', ''),
+            'desc': note.get('desc', ''),
+            'interact_info': {
+                'liked_count': interact.get('likedCount', '0'),
+                'collected_count': interact.get('collectedCount', '0'),
+                'comment_count': interact.get('commentCount', '0'),
+                'share_count': interact.get('shareCount', '0'),
+            },
+            'image_list': image_list,
+            'tag_list': [{'name': t.get('name', '')} for t in note.get('tagList', [])],
+            'time': note.get('time', 0),
+            'ip_location': note.get('ipLocation', '未知'),
+        }
+        if video:
+            note_card['video'] = video
+
+        return {
+            'id': note.get('noteId', ''),
+            'url': url,
+            'note_card': note_card,
+        }
 
 
     def get_search_keyword(self, word: str, cookies_str: str, proxies: dict = None):

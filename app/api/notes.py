@@ -65,6 +65,11 @@ def get_note_by_share_link():
         success, msg, note = xhs_service.get_note_by_share_link(share_link, get_comments)
         if success:
             return jsonify({"success": True, "msg": msg, "data": note}), 200
+        # 区分上游API错误和解析错误
+        if "反爬验证" in msg or "Cookie" in msg or "状态码" in msg:
+            return jsonify({"success": False, "msg": msg}), 502
+        if "无法解析" in msg:
+            return jsonify({"success": False, "msg": msg}), 400
         return jsonify({"success": False, "msg": msg}), 500
     except Exception as e:
         logger.error(f"获取笔记失败: {e}", exc_info=True)

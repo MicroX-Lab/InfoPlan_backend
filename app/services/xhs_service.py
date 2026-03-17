@@ -92,9 +92,12 @@ class XHSService:
             return False, f"小红书API返回错误: {api_msg}", None
 
         # 处理数据
-        items = note_info.get("data", {}).get("items", [])
+        data = note_info.get("data", {})
+        items = data.get("items", [])
         if not items:
-            return False, "笔记数据为空", None
+            if not data:
+                return False, "笔记数据为空，可能原因：Cookie失效或触发反爬验证，请更新Cookie后重试", None
+            return False, "笔记数据为空，笔记可能已被删除", None
 
         note_data = items[0]
         note_data["url"] = explore_url
