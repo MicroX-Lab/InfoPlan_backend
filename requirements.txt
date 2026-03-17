@@ -8,12 +8,16 @@ openpyxl
 flask
 flask_cors
 
-# Phase 1 新增
+# 认证相关依赖
 flask-jwt-extended
 flask-sqlalchemy
 sqlalchemy>=2.0
 alembic
-# 密码哈希使用 werkzeug 内置 (无需额外依赖)
+pyjwt
+passlib[bcrypt]
+flask-mail
+
+# 其他依赖
 cachetools
 openai
 pydantic
@@ -21,3 +25,6 @@ gunicorn
 pytest
 pytest-flask
 flasgger
+
+# 数据库驱动（兼容MySQL）
+pymysql
