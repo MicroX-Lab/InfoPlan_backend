@@ -1,6 +1,6 @@
 # encoding: utf-8
 """
-数据库配置文件
+数据库配置文件 - SQLite版本
 """
 import os
 from dotenv import load_dotenv
@@ -8,18 +8,21 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv()
 
-# 数据库配置
-DB_CONFIG = {
-    'host': '8.155.168.11',
-    'port': 3306,
-    'user': 'root',
-    'password': 'MicroXLab',
-    'database': 'infoplan',
-    'charset': 'utf8mb4'
-}
+# 数据库文件路径
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, 'data', 'infoplan.db')
 
-# 数据库URL
-DATABASE_URL = f"mysql+pymysql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}?charset={DB_CONFIG['charset']}"
+# 确保data目录存在
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
+# 数据库URL (SQLite)
+DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+# 保留DB_CONFIG用于兼容性
+DB_CONFIG = {
+    'path': DB_PATH,
+    'database': 'infoplan'
+}
 
 # 邮件配置
 MAIL_CONFIG = {

@@ -4,13 +4,16 @@
 """
 from flask import request, jsonify
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from db_connection import get_db, UserModel
+from db_sqlite import (
+    check_user_exists, get_user_by_email, create_user, 
+    update_user_verification, update_user_reset_token, 
+    update_user_password, get_user_by_reset_token
+)
 from auth.utils import (
     get_password_hash, verify_password, create_access_token,
-    generate_verification_code, is_valid_email
+    generate_verification_code, is_valid_email, generate_reset_token
 )
-from auth.email import send_verification_email
+from auth.email import send_verification_email, send_password_reset_email
 
 
 def register_api():
@@ -56,12 +59,8 @@ def register_api():
                 "data": None
             }), 400
         
-        # 获取数据库会话
-        db = next(get_db())
-        
         # 检查邮箱是否已存在
-        existing_user = db.query(UserModel).filter(UserModel.email == email).first()
-        if existing_user:
+        if check_user_exists(email):
             return jsonify({
                 "success": False,
                 "msg": "该邮箱已被注册",
@@ -77,16 +76,7 @@ def register_api():
         print(f"密码: {password}")
         hashed_password = get_password_hash(password)
         print(f"哈希后密码长度: {len(hashed_password)}")
-        new_user = UserModel(
-            email=email,
-            password_hash=hashed_password,
-            verification_code=code,
-            verification_expiry=expires_at
-        )
-        
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
+        user_id = create_user(email, hashed_password, code, expires_at)
         
         # 发送验证邮件
         from flask import current_app
@@ -145,11 +135,8 @@ def verify_email_api():
                 "data": None
             }), 400
         
-        # 获取数据库会话
-        db = next(get_db())
-        
         # 查找用户
-        user = db.query(UserModel).filter(UserModel.email == email).first()
+        user = get_user_by_email(email)
         if not user:
             return jsonify({
                 "success": False,
@@ -158,7 +145,7 @@ def verify_email_api():
             }), 404
         
         # 检查验证码
-        if user.verification_code != code:
+        if user['verification_code'] != code:
             return jsonify({
                 "success": False,
                 "msg": "验证码错误",
@@ -166,7 +153,7 @@ def verify_email_api():
             }), 400
         
         # 检查验证码是否过期
-        if user.verification_expiry and datetime.utcnow() > user.verification_expiry:
+        if user['verification_expiry'] and datetime.utcnow() > datetime.fromisoformat(user['verification_expiry']):
             return jsonify({
                 "success": False,
                 "msg": "验证码已过期",
@@ -174,11 +161,7 @@ def verify_email_api():
             }), 400
         
         # 验证成功
-        user.is_verified = True
-        user.verification_code = None
-        user.verification_expiry = None
-        
-        db.commit()
+        update_user_verification(email, True)
         
         return jsonify({
             "success": True,
@@ -227,11 +210,8 @@ def login_api():
                 "data": None
             }), 400
         
-        # 获取数据库会话
-        db = next(get_db())
-        
         # 查找用户
-        user = db.query(UserModel).filter(UserModel.email == email).first()
+        user = get_user_by_email(email)
         if not user:
             return jsonify({
                 "success": False,
@@ -240,7 +220,7 @@ def login_api():
             }), 401
         
         # 检查邮箱是否已验证
-        if not user.is_verified:
+        if not user['is_verified']:
             return jsonify({
                 "success": False,
                 "msg": "邮箱未验证，请先验证邮箱",
@@ -248,7 +228,7 @@ def login_api():
             }), 401
         
         # 验证密码
-        if not verify_password(password, user.password_hash):
+        if not verify_password(password, user['password_hash']):
             return jsonify({
                 "success": False,
                 "msg": "邮箱或密码错误",
@@ -256,7 +236,7 @@ def login_api():
             }), 401
         
         # 创建访问令牌
-        access_token = create_access_token(data={"sub": str(user.id), "email": user.email})
+        access_token = create_access_token(data={"sub": str(user['id']), "email": user['email']})
         
         return jsonify({
             "success": True,
@@ -265,8 +245,8 @@ def login_api():
                 "access_token": access_token,
                 "token_type": "bearer",
                 "user": {
-                    "id": user.id,
-                    "email": user.email
+                    "id": user['id'],
+                    "email": user['email']
                 }
             }
         }), 200
@@ -307,11 +287,8 @@ def request_reset_password_api():
                 "data": None
             }), 400
         
-        # 获取数据库会话
-        db = next(get_db())
-        
         # 查找用户
-        user = db.query(UserModel).filter(UserModel.email == email).first()
+        user = get_user_by_email(email)
         if not user:
             return jsonify({
                 "success": False,
@@ -320,14 +297,11 @@ def request_reset_password_api():
             }), 404
         
         # 生成重置令牌
-        from auth.utils import generate_reset_token
         reset_token = generate_reset_token()
         reset_expiry = datetime.utcnow() + timedelta(hours=1)
         
-        user.reset_token = reset_token
-        user.reset_expiry = reset_expiry
-        
-        db.commit()
+        # 更新用户重置令牌
+        update_user_reset_token(email, reset_token, reset_expiry)
         
         # 生成重置链接
         reset_link = f"http://localhost:3000/reset-password?token={reset_token}&email={email}"
@@ -395,20 +369,9 @@ def reset_password_api():
                 "data": None
             }), 400
         
-        # 获取数据库会话
-        db = next(get_db())
-        
         # 查找用户
-        user = db.query(UserModel).filter(UserModel.email == email).first()
+        user = get_user_by_reset_token(email, token)
         if not user:
-            return jsonify({
-                "success": False,
-                "msg": "用户不存在",
-                "data": None
-            }), 404
-        
-        # 检查重置令牌
-        if user.reset_token != token:
             return jsonify({
                 "success": False,
                 "msg": "无效的重置令牌",
@@ -416,7 +379,7 @@ def reset_password_api():
             }), 400
         
         # 检查令牌是否过期
-        if user.reset_expiry and datetime.utcnow() > user.reset_expiry:
+        if user['reset_expiry'] and datetime.utcnow() > datetime.fromisoformat(user['reset_expiry']):
             return jsonify({
                 "success": False,
                 "msg": "重置令牌已过期",
@@ -425,11 +388,7 @@ def reset_password_api():
         
         # 更新密码
         hashed_password = get_password_hash(new_password)
-        user.password_hash = hashed_password
-        user.reset_token = None
-        user.reset_expiry = None
-        
-        db.commit()
+        update_user_password(email, hashed_password)
         
         return jsonify({
             "success": True,

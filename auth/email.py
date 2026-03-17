@@ -57,20 +57,20 @@ def send_verification_email(to_email: str, code: str, expires_in: int = 30, is_t
         msg = MIMEMultipart()
         msg['From'] = sender
         msg['To'] = to_email
-        msg['Subject'] = Header('InfoPlan Email Verification', 'utf-8')
+        msg['Subject'] = Header('InfoPlan 邮箱验证码', 'utf-8')
         
-        # 邮件正文
-        body = """Hello!
+        # 邮件正文（中文）
+        body = """您好！
 
-Thank you for registering with InfoPlan.
+感谢您注册 InfoPlan。
 
-Your verification code is: {0}
-The code is valid for {1} minutes, please complete verification within the validity period.
+您的验证码是：{0}
+验证码有效期为 {1} 分钟，请在有效期内完成验证。
 
-Do not share this code with others. If you did not initiate this operation, please ignore this email.
+请勿将此验证码分享给他人。如您未进行此操作，请忽略此邮件。
 
-Best regards,
-InfoPlan Team""".format(code, expires_in)
+此致
+InfoPlan 团队""".format(code, expires_in)
         
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
         
